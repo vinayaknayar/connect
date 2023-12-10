@@ -5,10 +5,12 @@ import (
 	"os"
 	"time"
 
+	"connect/internal/handlers"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
-	"github.com/gofiber/template/html"
+	"github.com/gofiber/template/html/v2"
 )
 
 var (
@@ -25,13 +27,15 @@ func Run() error {
 	}
 
 	app := fiber.New(fiber.Config{
+		Views: html.New("./views", ".html"),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
 	})
 
-	app.Get("/", func(ctx *fiber.Ctx) error {
-		return ctx.SendString("Hello, World 👋!")
-	})
+	app.Use(cors.New())
+	app.Use(logger.New())
+
+	app.Get("/", handlers.Welcome)
 	app.Get("/room/create", )
 	app.Get("/room/:id", )
 	app.Get("/room/:id/ws", )

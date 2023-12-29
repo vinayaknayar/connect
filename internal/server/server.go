@@ -6,17 +6,19 @@ import (
 	"time"
 
 	"connect/internal/handlers"
+	w "connect/pkg/webrtc"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/template/html/v2"
+	"github.com/gofiber/websocket/v2"
 )
 
 var (
-	addr = flag.String("addr", ":"+os.Getenv("PORT"), "http service address")
-	cert = flag.String("cert", "", "path to TLS certificate")
-	key  = flag.String("key", "", "path to TLS key")
+	addr = flag.String("addr", ":"+os.Getenv("PORT"), "")
+	cert = flag.String("cert", "", "")
+	key  = flag.String("key", "", "")
 )
 
 func Run() error {
@@ -26,26 +28,41 @@ func Run() error {
 		*addr = ":8080"
 	}
 
-	app := fiber.New(fiber.Config{
-		Views: html.New("./views", ".html"),
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second,
-	})
-
-	app.Use(cors.New())
+	engine := html.New("./views", ".html")
+	app := fiber.New(fiber.Config{Views: engine})
 	app.Use(logger.New())
+	app.Use(cors.New())
 
 	app.Get("/", handlers.Welcome)
-	app.Get("/room/create", )
-	app.Get("/room/:id", )
-	app.Get("/room/:id/ws", )
-	app.Get("/room/:id/chat", )
-	app.Get("/room/:id/chat/ws", )
-	app.Get("/room/:id/viewer/ws", )
-	app.Get("/stream/:sid", )
-	app.Get("/stream/:sid/ws", )
-	app.Get("/stream/:sid/chat/ws", )
-	app.Get("/stream/:sid/viewer/ws", )
+	app.Get("/room/create", handlers.RoomCreate)
+	app.Get("/room/:uuid", handlers.Room)
+	app.Get("/room/:uuid/websocket", websocket.New(handlers.RoomWebsocket, websocket.Config{
+		HandshakeTimeout: 10 * time.Second,
+	}))
+	app.Get("/room/:uuid/chat", handlers.RoomChat)
+	app.Get("/room/:uuid/chat/websocket", websocket.New(handlers.RoomChatWebsocket))
+	app.Get("/room/:uuid/viewer/websocket", websocket.New(handlers.RoomViewerWebsocket))
+	app.Get("/stream/:suuid", handlers.Stream)
+	app.Get("/stream/:suuid/websocket", websocket.New(handlers.StreamWebsocket, websocket.Config{
+		HandshakeTimeout: 10 * time.Second,
+	}))
+	app.Get("/stream/:suuid/chat/websocket", websocket.New(handlers.StreamChatWebsocket))
+	app.Get("/stream/:suuid/viewer/websocket", websocket.New(handlers.StreamViewerWebsocket))
+	app.Static("/", "./assets")
 
+	w.Rooms = make(map[string]*w.Room)
+	w.Streams = make(map[string]*w.Room)
+	go dispatchKeyFrames()
+	if *cert != "" {
+		return app.ListenTLS(*addr, *cert, *key)
+	}
 	return app.Listen(*addr)
+}
+
+func dispatchKeyFrames() {
+	for range time.NewTicker(time.Second * 3).C {
+		for _, room := range w.Rooms {
+			room.Peers.DispatchKeyFrame()
+		}
+	}
 }
